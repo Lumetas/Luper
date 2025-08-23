@@ -1,0 +1,13 @@
+{
+    "name": "lumetas/luper",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Luper\\": "src/"
+        }
+    },
+    "require": {
+        "php": "^8.1"
+    }
+}

@@ -1,0 +1,237 @@
+#+TITLE: Luper: Библиотека асинхронного программирования для PHP
+#+AUTHOR: Ваше имя/компания
+#+DATE: 2024
+
+Введение
+** О библиотеке
+Luper - это легковесная библиотека для асинхронного программирования в PHP, предоставляющая механизмы для работы с параллельными задачами, таймерами и файберами.
+
+** Ключевые возможности
+
+Асинхронное выполнение PHP-функций через отдельные процессы
+
+Управление задачами с помощью Fibers (доступно с PHP 8.1)
+
+Таймеры и периодические задачи
+
+Неблокирующее ожидание результатов
+
+Простой и интуитивно понятный API
+
+Установка
+
+** Требования
+
+PHP >= 8.1
+
+** Composer
+#+BEGIN_SRC shell
+composer require lumetas/luper
+#+END_SRC
+
+Основные компоненты
+
+** Async - Асинхронное выполнение
+Класс для запуска PHP-функций в отдельных процессах.
+
+*** Создание асинхронной задачи
+#+begin_src php
+<?php
+use Luper\Async;
+
+// Создание асинхронной функции из файла
+$asyncFunction = Async::create(__DIR__.'/my_function.php');
+#+END_SRC
+
+*** Запуск и ожидание результата
+#+BEGIN_SRC php
+<?php
+// Запуск с аргументами
+$promise = $asyncFunction("arg1", "arg2");
+
+// Проверка завершения
+if ($promise->isCompleted()) {
+	$result = $promise->getResult();
+}
+
+// Получение ошибки (если есть)
+$error = $promise->getError();
+#+END_SRC
+
+** Loop - Цикл событий
+Центральный класс для управления асинхронными задачами.
+
+*** Создание экземпляра
+#+BEGIN_SRC php
+<?php
+use Luper\Loop;
+
+// Создание нового цикла
+$loop = new Loop();
+
+// Или использование синглтона
+$loop = Loop::make();
+#+END_SRC
+
+*** Добавление задач
+#+BEGIN_SRC php
+<?php
+$loop->addTask(function () {
+// Ваш код здесь
+	echo "Выполнено в файбере!";
+});
+#+END_SRC
+
+*** Таймеры
+#+BEGIN_SRC php
+<?php
+// Одноразовый таймер
+$timerId = $loop->addTimer(2.5, function () {
+	echo "Выполнится через 2.5 секунды";
+});
+
+// Периодический таймер
+$repeatingTimerId = $loop->addTimer(1.0, function () {
+	echo "Выполняется каждую секунду";
+}, true);
+
+// Отмена таймера
+$loop->clearTimer($timerId);
+#+END_SRC
+
+*** Управление выполнением
+#+BEGIN_SRC php
+<?php
+// Запуск цикла
+$loop->run();
+
+// Остановка цикла
+$loop->stop();
+
+// Приостановка выполнения в файбере
+Loop::suspend();
+
+// Задержка выполнения
+$loop->sleep(0.5); // sleep на 0.5 секунды
+#+END_SRC
+
+* Пример использования
+** Базовый пример
+#+BEGIN_SRC php
+<?php
+require_once "vendor/autoload.php";
+use Luper\Async;
+use Luper\Loop;
+
+$startTime = time();
+
+function createRequests($count) {
+	$loop = new Loop();
+	$results = [];
+
+	for($i = 0; $i < $count; $i++) {
+		$loop->addTask(function () use (&$loop, &$results) {
+			$asyncFunc = Async::create(__DIR__.'/requestFunc.php');
+			$promise = $asyncFunc("https://google.com");
+
+			while ($promise->getResult() === null) {
+				$loop->suspend();
+		 	}
+
+			$results[] = strlen($promise->getResult()['result']);
+		});
+	}
+
+	$loop->run();
+	return $results;
+}
+
+var_dump(createRequests(10));
+echo "\nИтоговое время: " . (time() - $startTime);
+#+END_SRC
+
+** Пример файла requestFunc.php
+#+BEGIN_SRC php
+<?php
+// Файл должен возвращать callable функцию
+return function($url) {
+// Имитация HTTP-запроса
+sleep(1); // Длительная операция
+return [
+	'status' => 200,
+	'content' => file_get_contents($url),
+	'headers' => []
+];
+};
+#+END_SRC
+
+* Практические примеры
+
+** Параллельные HTTP-запросы
+#+BEGIN_SRC php
+<?php
+use Luper\Async;
+use Luper\Loop;
+
+function fetchMultipleUrls(array $urls) {
+	$loop = new Loop();
+	$responses = [];
+
+	foreach ($urls as $index => $url) {
+		$loop->addTask(function () use ($url, $index, &$responses, $loop) {
+			$fetch = Async::create(__DIR__.'/fetch_url.php');
+			$promise = $fetch($url);
+
+			while (!$promise->isCompleted()) {
+				Loop::suspend();
+			}
+
+			$responses[$index] = $promise->getResult();
+		});
+	}
+
+	$loop->run();
+	return $responses;
+}
+#+END_SRC
+
+** Периодические задачи
+#+BEGIN_SRC php
+<?php
+use Luper\Loop;
+
+$loop = new Loop();
+
+// Обновление кэша каждые 30 секунд
+$loop->addTimer(30, function () {
+	updateCache();
+}, true);
+
+// Одноразовая задача через 5 секунд
+$loop->addTimer(5, function () {
+	sendNotification();
+});
+
+$loop->run();
+#+END_SRC
+
+* Best Practices
+
+** Структура асинхронных функций
+- Каждая асинхронная функция должна быть в отдельном файле
+- Файл должен возвращать callable
+- Используйте обработку ошибок внутри функций
+
+** Управление памятью
+- Используйте ссылки для больших данных чтобы избежать копирования
+
+** Производительность
+- Не создавайте чрезмерное количество параллельных процессов
+
+* Ограничения
+- Не подходит для CPU-bound задач (только I/O-bound)
+- Ограничения процессов PHP (память, время выполнения)
+- Требует аккуратного управления ресурсами
+
+* Заключение
+Luper предоставляет простой и эффективный способ асинхронного программирования в PHP, особенно полезный для I/O-операций и параллельной обработки задач.
