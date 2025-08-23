@@ -215,6 +215,54 @@ $loop->addTimer(5, function () {
 $loop->run();
 #+END_SRC
 
+
+** Pull и PullMax
+Это два класса представляющие собой обёртку над функционалом. Чтобы было проще обрабатывать данные Пример:
+#+begin_src php
+<?php
+use Luper\Pull;
+
+$items = [];
+for($i = 0; count($items) < 50; $i ++) {$items[] = $i;}
+
+$pullSize = 10;
+// Создаем пул с максимум 3 параллельными процессами
+$pull = new Pull($pullSize, __DIR__.'/proc.php');
+
+// Добавляем задачи
+foreach ($items as $item) {
+    $pull->add($item, 'дополнительный_аргумент');
+}
+
+// Запускаем обработку
+$results = $pull->run();
+
+#+end_src
+
+И аналогичный пример для PullMax:
+#+begin_src php
+<?php
+use Luper\PullMax;
+
+$items = [];
+for($i = 0; count($items) < 50; $i ++) {$items[] = $i;}
+
+$pullSize = 10;
+
+$pull = new PullMax(__DIR__.'/proc.php');
+
+// Добавляем задачи
+foreach ($items as $item) {
+    $pull->add($item, 'дополнительный_аргумент');
+}
+
+// Запускаем обработку 
+$results = $pull->run();
+
+#+end_src
+
+Класс Pull Позволяет легко обрабатывать данные, указав максимальное количество одновременно запущенных процессов. PullMax Будет пытаться запустить столько паралельных процессов сколько сможет
+
 * Best Practices
 
 ** Структура асинхронных функций
