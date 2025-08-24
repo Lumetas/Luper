@@ -40,15 +40,12 @@ class PullMax
 		$results = [];
 
 		$file = $this->asyncFunctionPath;
+		$func = Async::create($file);
         foreach ($this->tasks as $taskArgs) {
-			$loop->addTask(function () use ($loop, $taskArgs, $file, &$errors, &$results) {
-				$func = Async::create($file);
+			$loop->addTask(function () use ($loop, $taskArgs, $file, &$errors, &$results, &$func) {
 				$promise = $func(...$taskArgs);
-				while (!$promise->isCompleted()) {
-					$loop->suspend();
-				}
 
-				$results[] = $promise->getResult()['result'];
+				$results[] = $promise->await();
 				$errors[] = $promise->getError();
 			});
         }

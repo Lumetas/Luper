@@ -40,17 +40,13 @@ class Pull
 		$loop = Loop::make();
 		$chunks = array_chunk($this->tasks, $this->maxProcesses);
 
+		$asyncFunction = Async::create($this->asyncFunctionPath);
 		foreach ($chunks as $chunk) {
 			foreach ($chunk as $taskArgs) {
-				$loop->addTask(function () use ($taskArgs) {
-					$asyncFunction = Async::create($this->asyncFunctionPath);
+				$loop->addTask(function () use ($taskArgs, $asyncFunction) {
 					$promise = $asyncFunction(...$taskArgs);
 
-					while (!$promise->isCompleted()) {
-						Loop::suspend();
-					}
-
-					$this->results[] = $promise->getResult()['result'];
+					$this->results[] = $promise->await();
 					$this->errors[] = $promise->getError();
 				});
 			}

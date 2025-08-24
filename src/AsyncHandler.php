@@ -18,10 +18,31 @@ if (!is_callable($userFunction)) {
 
 // Выполняем пользовательскую функцию
 try {
-	ob_start();
+    ob_start();
     $result = call_user_func_array($userFunction, $data['args'] ?? []);
-	ob_clean();
-    echo json_encode(['success' => true, 'result' => $result]);
+    $output = ob_get_clean();
+    
+    // Сериализуем результат для безопасной передачи
+    $serializedResult = base64_encode(serialize($result));
+    $serializedOutput = base64_encode(serialize($output));
+    
+    echo json_encode([
+        'success' => true, 
+        'result' => $serializedResult,
+        'output' => $serializedOutput
+    ]);
 } catch (\Throwable $e) {
-    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    // Сериализуем исключение для безопасной передачи
+    $serializedError = base64_encode(serialize([
+        'message' => $e->getMessage(),
+        'code' => $e->getCode(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine(),
+        'trace' => $e->getTraceAsString()
+    ]));
+    
+    echo json_encode([
+        'success' => false, 
+        'error' => $serializedError
+    ]);
 }
