@@ -5,12 +5,12 @@ use RuntimeException;
 
 class PullMax
 {
-    private string $asyncFunctionPath;
+    private string|\Closure $asyncFunctionPath;
     private array $tasks = [];
     private array $results = [];
     private array $errors = [];
 
-    public function __construct(string $asyncFunctionPath)
+    public function __construct(\Closure|string $asyncFunctionPath)
     {
         if (!file_exists($asyncFunctionPath)) {
             throw new RuntimeException("Файл асинхронной функции не найден: " . $asyncFunctionPath);

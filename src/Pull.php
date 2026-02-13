@@ -6,12 +6,12 @@ use RuntimeException;
 class Pull
 {
 	private int $maxProcesses;
-	private string $asyncFunctionPath;
+	private string|\Closure $asyncFunctionPath;
 	private array $tasks = [];
 	private array $results = [];
 	private array $errors = [];
 
-	public function __construct(int $maxProcesses, string $asyncFunctionPath)
+	public function __construct(int $maxProcesses, \Closure|string $asyncFunctionPath)
 	{
 		if ($maxProcesses <= 0) {
 			throw new RuntimeException("Максимальное количество процессов должно быть больше 0");
