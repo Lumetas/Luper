@@ -2,7 +2,7 @@
     "name": "lumetas/luper",
     "type": "library",
     "license": "MIT",
-	"version": "1.3.0",
+	"version": "1.3.2",
     "autoload": {
         "psr-4": {
             "Luper\\": "src/"
