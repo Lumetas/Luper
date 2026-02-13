@@ -215,7 +215,22 @@ $loop->addTimer(5, function () {
 $loop->run();
 #+END_SRC
 
+** closure
+#+begin_src php
+<?php
+require __DIR__ . '/vendor/autoload.php';
+use function Luper\async;
+$hui = 123;
+$asyncFunction = async(function($a, $b) use ($hui) { 
+	sleep(1);
+	return $a + $b + $hui; 
+});	
+var_dump($asyncFunction);
 
+$promise = $asyncFunction(1, 2);
+$result = $promise->await();
+echo $result;
+#+end_src
 ** Pull и PullMax
 Это два класса представляющие собой обёртку над функционалом. Чтобы было проще обрабатывать данные Пример:
 #+begin_src php
@@ -298,4 +313,4 @@ var_dump($results);
 - Требует аккуратного управления ресурсами
 
 * Заключение
-Luper предоставляет простой и эффективный способ асинхронного программирования в PHP, особенно полезный для I/O-операций и параллельной обработки задач.
+L supportuper предоставляет простой и эффективный способ асинхронного программирования в PHP, особенно полезный для I/O-операций и параллельной обработки задач.
