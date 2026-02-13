@@ -12,9 +12,11 @@ class PullMax
 
     public function __construct(\Closure|string $asyncFunctionPath)
     {
-        if (!file_exists($asyncFunctionPath)) {
-            throw new RuntimeException("Файл асинхронной функции не найден: " . $asyncFunctionPath);
-        }
+		if (is_string($asyncFunctionPath)) {
+			if (!file_exists($asyncFunctionPath)) {
+				throw new RuntimeException("Файл асинхронной функции не найден: " . $asyncFunctionPath);
+			}
+		}
 
         $this->asyncFunctionPath = $asyncFunctionPath;
     }
