@@ -1,0 +1,390 @@
+#+TITLE: Luper: Async programming library for PHP
+#+AUTHOR: Lumetas
+#+DATE: 2024
+
+Introduction
+** About the library
+Luper is a lightweight async programming library for PHP, providing tools for working with parallel tasks, timers and fibers.
+
+** Key features
+
+Run PHP functions asynchronously in separate OS processes
+
+Task scheduling with Fibers (PHP 8.1+)
+
+Timers and periodic tasks
+
+Non-blocking waiting for results
+
+Two-way data exchange between parent and child processes
+
+Simple and intuitive API
+
+Installation
+
+** Requirements
+
+PHP >= 8.1
+
+** Composer
+#+BEGIN_SRC shell
+composer require lumetas/luper
+#+END_SRC
+
+** Testing
+The test suite lives in the luper-test project (dev environment; the package is installed through a path repository). To run it:
+#+BEGIN_SRC shell
+cd luper-test
+composer test
+#+END_SRC
+
+Core components
+
+** Async - asynchronous execution
+A class for running PHP functions in separate OS processes.
+
+*** Creating an async function
+#+begin_src php
+<?php
+use Luper\Async;
+
+// Create an async function from a file
+$asyncFunction = Async::create(__DIR__.'/my_function.php');
+#+END_SRC
+
+*** Launching and waiting for a result
+#+BEGIN_SRC php
+<?php
+// Launch with arguments
+$promise = $asyncFunction("arg1", "arg2");
+
+// Check completion
+if ($promise->isCompleted()) {
+	$result = $promise->getResult();
+}
+
+// Get the error (if any)
+$error = $promise->getError();
+#+END_SRC
+
+** AsyncPromise - exchanging data with a child process
+The promise returned by an async function supports two-way data exchange between the parent and the child process for the whole duration of the execution.
+
+*** Parent -> Child process
+#+BEGIN_SRC php
+<?php
+$promise = $asyncFunction(...);
+
+// Non-blocking send of data to the child process
+$promise->sendData('hello');
+$promise->sendData(['key' => 'value']);
+#+END_SRC
+
+Inside the child function the data is received with luper_get_data().
+
+*** Child process -> Parent
+#+begin_src php
+<?php
+return function() {
+    // Send data to the parent
+    luper_send_data('progress: 50%');
+    luper_send_data(['status' => 'working']);
+
+    return 'final result';
+};
+#+end_src
+
+The parent receives the data through $promise->getData().
+
+*** Methods
+- $promise->sendData($data) - non-blocking send of data to the child process. Execution does not stall even when the pipe is full (data is buffered).
+- $promise->getData(bool $nonBlocking = false) - receive data from the child process. By default it waits for data to arrive (inside a fiber it suspends the fiber). If true is passed, it returns null right away when no data is ready.
+- luper_get_data(bool $nonBlocking = false) - receive data sent via $promise->sendData(). Same semantics as getData.
+- luper_send_data($data) - send data to the parent; it ends up in the $promise->getData() queue.
+
+*** Exchange example
+#+begin_src php
+<?php
+// worker.php - child function
+return function(int $count) {
+    for ($i = 0; $i < $count; $i++) {
+        luper_send_data("progress: $i/$count");
+        usleep(100000);
+    }
+    $command = luper_get_data(); // wait for a command from the parent
+    return $command;
+};
+#+end_src
+
+#+begin_src php
+<?php
+$promise = Async::create(__DIR__ . '/worker.php')(3);
+
+// Read intermediate data (blocks until data arrives)
+var_dump($promise->getData()); // "progress: 0/3"
+var_dump($promise->getData()); // "progress: 1/3"
+
+// Non-blocking check: not ready yet -> null
+var_dump($promise->getData(true));
+
+$promise->sendData('START');
+
+var_dump($promise->await()); // "START"
+#+end_src
+
+** Loop - the event loop
+The central class for managing asynchronous tasks.
+
+*** Creating an instance
+#+BEGIN_SRC php
+<?php
+use Luper\Loop;
+
+// Create a new loop
+$loop = new Loop();
+
+// Or use the singleton
+$loop = Loop::make();
+#+END_SRC
+
+*** Adding tasks
+#+BEGIN_SRC php
+<?php
+$loop->addTask(function () {
+// your code here
+	echo "Runs inside a fiber!";
+});
+#+END_SRC
+
+*** Timers
+#+BEGIN_SRC php
+<?php
+// One-shot timer
+$timerId = $loop->addTimer(2.5, function () {
+	echo "Runs after 2.5 seconds";
+});
+
+// Repeating timer
+$repeatingTimerId = $loop->addTimer(1.0, function () {
+	echo "Runs every second";
+}, true);
+
+// Cancel a timer
+$loop->clearTimer($timerId);
+#+END_SRC
+
+*** Execution control
+#+BEGIN_SRC php
+<?php
+// Start the loop
+$loop->run();
+
+// Stop the loop
+$loop->stop();
+
+// Suspend execution inside a fiber
+Loop::suspend();
+
+// Delay execution
+$loop->sleep(0.5); // sleep for 0.5 seconds
+#+END_SRC
+
+* Usage examples
+** Basic example
+#+BEGIN_SRC php
+<?php
+require_once "vendor/autoload.php";
+use Luper\Async;
+use Luper\Loop;
+
+$startTime = time();
+
+function createRequests($count) {
+	$loop = new Loop();
+	$results = [];
+
+	for($i = 0; $i < $count; $i++) {
+		$loop->addTask(function () use (&$loop, &$results) {
+			$asyncFunc = Async::create(__DIR__.'/requestFunc.php');
+			$promise = $asyncFunc("https://google.com");
+
+			while ($promise->getResult() === null) {
+				$loop->suspend();
+		 	}
+
+			$results[] = strlen($promise->getResult()['result']);
+		});
+	}
+
+	$loop->run();
+	return $results;
+}
+
+var_dump(createRequests(10));
+echo "\nTotal time: " . (time() - $startTime);
+#+END_SRC
+
+** Example request function file
+#+BEGIN_SRC php
+<?php
+// The file must return a callable
+return function($url) {
+// Simulate an HTTP request
+sleep(1); // long-running operation
+return [
+	'status' => 200,
+	'content' => file_get_contents($url),
+	'headers' => []
+];
+};
+#+END_SRC
+
+* Real-world examples
+
+** Parallel HTTP requests
+#+BEGIN_SRC php
+<?php
+use Luper\Async;
+use Luper\Loop;
+
+function fetchMultipleUrls(array $urls) {
+	$loop = new Loop();
+	$responses = [];
+
+	foreach ($urls as $index => $url) {
+		$loop->addTask(function () use ($url, $index, &$responses, $loop) {
+			$fetch = Async::create(__DIR__.'/fetch_url.php');
+			$promise = $fetch($url);
+
+			while (!$promise->isCompleted()) {
+				Loop::suspend();
+			}
+
+			$responses[$index] = $promise->getResult();
+		});
+	}
+
+	$loop->run();
+	return $responses;
+}
+#+END_SRC
+
+** Periodic tasks
+#+BEGIN_SRC php
+<?php
+use Luper\Loop;
+
+$loop = new Loop();
+
+// Refresh a cache every 30 seconds
+$loop->addTimer(30, function () {
+	updateCache();
+}, true);
+
+// One-shot task after 5 seconds
+$loop->addTimer(5, function () {
+	sendNotification();
+});
+
+$loop->run();
+#+END_SRC
+
+** Closures
+#+begin_src php
+<?php
+require __DIR__ . '/vendor/autoload.php';
+use function Luper\async;
+$var = 123;
+$asyncFunction = async(function($a, $b) use ($var) { 
+	sleep(1);
+	return $a + $b + $var; 
+});	
+
+$promise = $asyncFunction(1, 2);
+$result = $promise->await();
+echo $result;
+#+end_src
+
+** Pull and PullMax
+These two classes are thin wrappers around the core functionality, meant to make bulk data processing easier. Example:
+#+begin_src php
+<?php
+use Luper\Pull;
+
+$items = [];
+for($i = 0; count($items) < 50; $i ++) {$items[] = $i;}
+
+$pullSize = 10;
+// Create a pool with at most 3 parallel processes
+$pull = new Pull($pullSize, __DIR__.'/proc.php');
+
+// Add tasks
+foreach ($items as $item) {
+    $pull->add($item, 'extra_argument');
+}
+
+// Start processing
+$results = $pull->run();
+
+#+end_src
+
+The same for PullMax:
+#+begin_src php
+<?php
+use Luper\PullMax;
+
+$items = [];
+for($i = 0; count($items) < 50; $i ++) {$items[] = $i;}
+
+$pullSize = 10;
+
+$pull = new PullMax(__DIR__.'/proc.php');
+
+// Add tasks
+foreach ($items as $item) {
+    $pull->add($item, 'extra_argument');
+}
+
+// Start processing 
+$results = $pull->run();
+
+#+end_src
+
+Pull lets you process data easily by limiting the maximum number of simultaneously running processes. PullMax will try to run as many parallel processes as it can.
+
+** await
+An async function returns a promise whose await method returns the function's result. If the function has not finished yet, the method blocks the flow until completion; when called inside a fiber, the fiber is suspended until the function finishes. That makes the method extremely useful inside the event loop, e.g.:
+#+begin_src php
+<?php
+use Luper\{Loop, Async};
+$func = Async::create(__DIR__.'/proc.php');
+$loop = new Loop;
+$results = [];
+foreach ($elems as $elem) {
+	$loop->addTask(function () use ($func, $loop, &$results) {
+		$results[] = $func(1, 2)->await();
+	});
+}
+$loop->run();
+var_dump($results);
+#+end_src
+
+* Best Practices
+
+** Async function structure
+- Each async function should live in its own file
+- The file must return a callable
+- Handle errors inside the functions
+
+** Memory management
+- Use references for large data to avoid copying
+
+** Performance
+- Do not create an excessive number of parallel processes
+
+* Limitations
+- PHP process limits (memory, execution time)
+- Requires careful resource management
+
+* Conclusion
+Luper provides a simple and effective way to do async programming in PHP, especially useful for I/O operations and parallel data processing.

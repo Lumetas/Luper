@@ -24,7 +24,8 @@ class Async {
             "file_path" => $this->filepath,
 			"args" => $args,
 			"closure" => $this->closure,
-			"typeIsClosure" => $this->typeIsClosure
+			"typeIsClosure" => $this->typeIsClosure,
+			"autoload_path" => $this->resolveAutoloadPath()
         ];
 
         $descriptors = [
@@ -39,14 +40,49 @@ class Async {
         if (!is_resource($process)) {
             throw new \RuntimeException("Failed to start async handler");
         }
-        // Передаем данные и сразу закрываем stdin
-        fwrite($pipes[0], json_encode($stdin));
-        fclose($pipes[0]);
+        // Передаем init-сообщение и НЕ закрываем stdin:
+        // пайп остаётся открытым для двустороннего обмена данными (sendData в child)
+        fwrite($pipes[0], json_encode($stdin) . "\n");
+        fflush($pipes[0]);
         // Переводим пайпы в неблокирующий режим
+        stream_set_blocking($pipes[0], false);
         stream_set_blocking($pipes[1], false);
         stream_set_blocking($pipes[2], false);
+        stream_set_write_buffer($pipes[0], 0);
 
         // Создаем и возвращаем новый промис для каждого вызова
         return new AsyncPromise($process, $pipes);
+    }
+
+    private function resolveAutoloadPath(): string {
+        $candidates = [__DIR__ . '/../../../autoload.php'];
+
+        // Ищем автозагрузчик Composer, чтобы корректно обработать
+        // symlink-установку (path repository в dev-режиме)
+        foreach (get_declared_classes() as $class) {
+            if (str_starts_with($class, 'ComposerAutoloaderInit') && method_exists($class, 'getLoader')) {
+                try {
+                    $loader = $class::getLoader();
+                    if ($loader instanceof \Composer\Autoload\ClassLoader) {
+                        $prefixes = $loader->getPrefixesPsr4();
+                        if (isset($prefixes['Luper\\'])) {
+                            foreach ($prefixes['Luper\\'] as $dir) {
+                                $candidates[] = dirname($dir, 3) . DIRECTORY_SEPARATOR . 'autoload.php';
+                            }
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    // ignore
+                }
+            }
+        }
+
+        foreach ($candidates as $candidate) {
+            if (is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return __DIR__ . '/../../../autoload.php';
     }
 }

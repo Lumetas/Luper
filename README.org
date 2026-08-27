@@ -29,6 +29,13 @@ PHP >= 8.1
 composer require lumetas/luper
 #+END_SRC
 
+** Тестирование
+Тесты находятся в проекте luper-test (dev-окружение, пакет подключается через path-репозиторий). Запуск:
+#+BEGIN_SRC shell
+cd luper-test
+composer test
+#+END_SRC
+
 Основные компоненты
 
 ** Async - Асинхронное выполнение
@@ -57,6 +64,71 @@ if ($promise->isCompleted()) {
 // Получение ошибки (если есть)
 $error = $promise->getError();
 #+END_SRC
+
+** AsyncPromise - обмен данными с дочерним процессом
+Промис, возвращаемый асинхронной функцией, поддерживает двусторонний обмен данными между родительским и дочерним процессами на всём протяжении выполнения.
+
+*** Родитель -> Дочерний процесс
+#+BEGIN_SRC php
+<?php
+$promise = $asyncFunction(...);
+
+// Неблокирующая отправка данных в дочерний процесс
+$promise->sendData('hello');
+$promise->sendData(['key' => 'value']);
+#+END_SRC
+
+Внутри дочерней функции данные принимаются через luper_get_data().
+
+*** Дочерний процесс -> Родитель
+#+begin_src php
+<?php
+return function() {
+    // Отправка данных родителю
+    luper_send_data('progress: 50%');
+    luper_send_data(['status' => 'working']);
+
+    return 'final result';
+};
+#+end_src
+
+Родитель получает их через $promise->getData().
+
+*** Методы
+- $promise->sendData($data) - неблокирующая отправка данных в дочерний процесс. Выполнение не останавливается даже при переполнении канала (данные буферизуются).
+- $promise->getData(bool $nonBlocking = false) - получить данные от дочернего процесса. По умолчанию ожидает появления данных (внутри файбера приостанавливает его). Если передать true - вернёт null сразу, когда готовых данных нет.
+- luper_get_data(bool $nonBlocking = false) - получить данные, отправленные через $promise->sendData(). Семантика та же, что у getData.
+- luper_send_data($data) - отправить данные родителю; они попадают в очередь $promise->getData().
+
+*** Пример обмена
+#+begin_src php
+<?php
+// worker.php - дочерняя функция
+return function(int $count) {
+    for ($i = 0; $i < $count; $i++) {
+        luper_send_data("progress: $i/$count");
+        usleep(100000);
+    }
+    $command = luper_get_data(); // ждём команду от родителя
+    return $command;
+};
+#+end_src
+
+#+begin_src php
+<?php
+$promise = Async::create(__DIR__ . '/worker.php')(3);
+
+// Читаем промежуточные данные (блокирует, пока данных нет)
+var_dump($promise->getData()); // "progress: 0/3"
+var_dump($promise->getData()); // "progress: 1/3"
+
+// Неблокирующая проверка: данных ещё нет -> null
+var_dump($promise->getData(true));
+
+$promise->sendData('СТАРТ');
+
+var_dump($promise->await()); // "СТАРТ"
+#+end_src
 
 ** Loop - Цикл событий
 Центральный класс для управления асинхронными задачами.
@@ -312,4 +384,4 @@ var_dump($results);
 - Требует аккуратного управления ресурсами
 
 * Заключение
-L supportuper предоставляет простой и эффективный способ асинхронного программирования в PHP, особенно полезный для I/O-операций и параллельной обработки задач.
+Luper предоставляет простой и эффективный способ асинхронного программирования в PHP, особенно полезный для I/O-операций и параллельной обработки задач.
