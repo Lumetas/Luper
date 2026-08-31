@@ -43,7 +43,7 @@ class Loop {
         try {
             unset($this->timers[$id]);
             return true;
-        } catch (Throwable $e) {
+        } catch (\Throwable $e) {
             return false;
         }
     }
@@ -80,7 +80,7 @@ class Loop {
                     $this->activeFibers[] = $fiber;
                 }
                 
-            } catch (Throwable $e) {
+            } catch (\Throwable $e) {
                 // Обработка ошибок в файберах
                 error_log("Fiber error: " . $e->getMessage());
             }
@@ -103,7 +103,7 @@ class Loop {
                         $stillActive[] = $fiber;
                     }
                 }
-            } catch (Throwable $e) {
+            } catch (\Throwable $e) {
                 error_log("Active fiber error: " . $e->getMessage());
             }
         }
@@ -127,7 +127,7 @@ class Loop {
                         $this->activeFibers[] = $timerFiber;
                     }
                     
-                } catch (Throwable $e) {
+                } catch (\Throwable $e) {
                     error_log("Timer fiber error: " . $e->getMessage());
                 }
                 

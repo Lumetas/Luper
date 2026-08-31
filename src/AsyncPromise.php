@@ -152,6 +152,19 @@ class AsyncPromise {
         $this->processStdoutBuffer();
     }
 
+	private function drainStdout(): void {
+		if (!is_resource($this->pipes[1] ?? null)) {
+			return;
+		}
+
+		while (true) {
+			$chunk = @fread($this->pipes[1], 65536);
+			if ($chunk === false || $chunk === '') {
+				break;
+			}
+		}
+	}
+
     private function drainStderr(): void {
         if (!is_resource($this->pipes[2] ?? null)) {
             return;
