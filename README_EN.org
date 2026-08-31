@@ -31,15 +31,6 @@ PHP >= 8.1
 composer require lumetas/luper
 #+END_SRC
 
-** Testing
-The test suite lives in the luper-test project (dev environment; the package is installed through a path repository). To run it:
-#+BEGIN_SRC shell
-cd luper-test
-composer test
-#+END_SRC
-
-Core components
-
 ** Async - asynchronous execution
 A class for running PHP functions in separate OS processes.
 

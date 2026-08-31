@@ -29,15 +29,6 @@ PHP >= 8.1
 composer require lumetas/luper
 #+END_SRC
 
-** Тестирование
-Тесты находятся в проекте luper-test (dev-окружение, пакет подключается через path-репозиторий). Запуск:
-#+BEGIN_SRC shell
-cd luper-test
-composer test
-#+END_SRC
-
-Основные компоненты
-
 ** Async - Асинхронное выполнение
 Класс для запуска PHP-функций в отдельных процессах.
 
